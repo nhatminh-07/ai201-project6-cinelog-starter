@@ -8,16 +8,9 @@ before writing your own tests for the watchlist feature (see Comment 4).
 
 import pytest
 from app import create_app, db
-from models import User, Film, CollectionEntry, WatchlistEntry
-from services.collection_service import (
-    add_to_collection,
-    remove_from_collection,
-    get_collection,
-    FilmNotFoundError,
-    AlreadyInCollectionError,
-    NotInCollectionError,
-)
-from services.watchlist_service import AlreadyInWatchlistError, add_to_watchlist
+from models import User, Film, WatchlistEntry
+from services.collection_service import FilmNotFoundError
+from services.watchlist_service import AlreadyInWatchlistError, add_to_watchlist, get_watchlist
 
 @pytest.fixture
 def app():
@@ -116,7 +109,6 @@ def test_get_watchlist_returns_newest_first(app, sample_user):
     """
     with app.app_context():
         from datetime import datetime, timezone, timedelta
-        from models import Film, CollectionEntry
 
         film_a = Film(title="Alien", year=1979, genre="Horror")
         film_b = Film(title="Blade Runner", year=1982, genre="Sci-Fi")
@@ -126,13 +118,13 @@ def test_get_watchlist_returns_newest_first(app, sample_user):
         earlier = datetime.now(timezone.utc) - timedelta(days=5)
         later = datetime.now(timezone.utc)
 
-        entry_a = CollectionEntry(user_id=sample_user, film_id=film_a.id, date_added=earlier)
-        entry_b = CollectionEntry(user_id=sample_user, film_id=film_b.id, date_added=later)
+        entry_a = WatchlistEntry(user_id=sample_user, film_id=film_a.id, date_added=earlier)
+        entry_b = WatchlistEntry(user_id=sample_user, film_id=film_b.id, date_added=later)
         db.session.add_all([entry_a, entry_b])
         db.session.commit()
 
-        collection = get_collection(sample_user)
-        titles = [f["title"] for f in collection]
+        watchlist = get_watchlist(sample_user)
+        titles = [f["title"] for f in watchlist]
 
         # Blade Runner was added later, so it should come first
         assert titles[0] == "Blade Runner"
