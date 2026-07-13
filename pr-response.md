@@ -35,9 +35,13 @@ The second, more concrete issue: the existing "sort order" test doesn't cover th
 **How I verified:** Ran `pytest tests/test_watchlist.py -v` after fixing both the `order_by` clause and the test to confirm newest-first ordering is real, not just asserted by a mislabeled test.
 
 ## Comment 6 — Rebase
-**What conflicted:**
-**How I resolved it:**
-**How I verified no conflict remains:**
+**What conflicted:** `main` picked up a schema refactor (`07ca580`, "migrate film IDs from integer to UUID") while `feature/watchlist` was still in flight, so the watchlist code was written against the old schema. `models.py` still had `Film.id = db.Column(db.Integer, autoincrement=True)` and both `CollectionEntry.film_id` / `WatchlistEntry.film_id` as `db.Integer` foreign keys, plus a header docstring literally saying "before the main branch refactor." The stale assumption leaked into code too: `services/watchlist_service.py`'s docstring documented `film_id (int)` with a "pre-refactor" note, and `routes/watchlist/watchlist.py`'s endpoint docs said `Body: { "film_id": <int> }`. None of this matched `main`, where `Film.id` is a UUID string and `collection_service.py`/`routes/collection.py` were already updated to match.
+
+**How I resolved it:** Rewrote the watchlist side of the schema to match `main`'s post-refactor state: `Film.id` and both `film_id` foreign keys changed from `db.Integer` to `db.String(36)` with `default=generate_uuid` on `Film.id`, matching exactly what `07ca580` did for `CollectionEntry`. Updated the `models.py` header comment and the two stale docstrings to stop describing an integer ID that no longer exists anywhere else in the codebase.
+
+Separately, while doing this work I also caught a process mistake: the commits for the test file, the PR-response updates, and this UUID fix had been committed and pushed straight to `origin/main` instead of `feature/watchlist`. I created a local `feature/watchlist` branch at that commit and force-pushed it to overwrite the stale `origin/feature/watchlist` (which still had the pre-refactor code from before this PR even branched), so the actual work now lives on the correct branch. I left `origin/main`'s history as-is rather than rewriting a shared branch — `main` and `feature/watchlist` currently point at the same commit as a result, and will diverge again once new work lands on the feature branch.
+
+**How I verified no conflict remains:** Ran the full suite (`pytest tests/ -v`) — all 8 tests pass, covering both `test_collection.py` and `test_watchlist.py`, confirming the UUID foreign keys resolve correctly end to end (entry creation, deduplication, nonexistent-film handling, and sort order). Also grepped the codebase for `db.Integer` and `int` film-ID references to confirm none remain outside unrelated integer fields (`year`, `rating`).
 
 ## PR Description
 <!-- Written at the end — feature overview, design decisions, manual testing steps -->
