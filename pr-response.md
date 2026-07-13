@@ -44,4 +44,41 @@ Separately, while doing this work I also caught a process mistake: the commits f
 **How I verified no conflict remains:** Ran the full suite (`pytest tests/ -v`) — all 8 tests pass, covering both `test_collection.py` and `test_watchlist.py`, confirming the UUID foreign keys resolve correctly end to end (entry creation, deduplication, nonexistent-film handling, and sort order). Also grepped the codebase for `db.Integer` and `int` film-ID references to confirm none remain outside unrelated integer fields (`year`, `rating`).
 
 ## PR Description
-<!-- Written at the end — feature overview, design decisions, manual testing steps -->
+
+### What this feature does
+Adds a watchlist to CineLog: users can save films they want to watch later, separate from their collection of films already watched. `POST /watchlist/<user_id>/add` saves a film (rejecting duplicates and nonexistent films), and `GET /watchlist/<user_id>` returns everything on a user's watchlist, newest-added first.
+
+### Design decisions
+- **Visibility defaults to public** (`WatchlistEntry.public = True`) — optimizes for the median user who never visits settings, at the cost of silent oversharing for privacy-conscious users. See Comment 4.
+- **Sorted newest-first**, matching `get_collection()`'s convention, rather than alphabetically — optimizes for "what did I just add, and what should I watch next" over "look up one known title." See Comment 5.
+- **`Film.id` and both `film_id` foreign keys use UUID strings** (`db.String(36)`), matching the schema `main` migrated to in `07ca580`. See Comment 6.
+
+### How to test manually
+```bash
+python app.py
+# in another terminal:
+
+# Add a film to the watchlist
+curl -X POST http://localhost:5000/watchlist/<user_id>/add \
+  -H "Content-Type: application/json" \
+  -d '{"film_id": "<film-uuid>"}'
+# → 201, returns the new entry
+
+# Adding the same film again
+curl -X POST http://localhost:5000/watchlist/<user_id>/add \
+  -H "Content-Type: application/json" \
+  -d '{"film_id": "<film-uuid>"}'
+# → 409 AlreadyInWatchlistError
+
+# Adding a film_id that doesn't exist
+curl -X POST http://localhost:5000/watchlist/<user_id>/add \
+  -H "Content-Type: application/json" \
+  -d '{"film_id": "00000000-0000-0000-0000-000000000000"}'
+# → 404 FilmNotFoundError
+
+# View the watchlist
+curl http://localhost:5000/watchlist/<user_id>
+# → 200, films newest-added first, each with "public": true
+```
+`pytest tests/ -v` covers the same cases automatically (8 tests, all passing).
+
